@@ -3,18 +3,18 @@
 	<head>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, initial-scale=1">
-		<title>BTC</title>
+		<title>Project BTC</title>
 		<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB" crossorigin="anonymous">
 	</head>
 	<body>
 		<h1>BitTorrent Tracker Cache</h1>
 		<p>This service provides a generic peer list cache, inspired by <a href="https://web.archive.org/web/20250919064703/https://blog.lyc8503.net/post/pt-hack">this blog post</a>. Some features:</p>
 		<ul>
-			<li><b>Automagic Caching: </b>Just change the tracker URL in your torrent file, and this service manages everything for you.</li>
+			<li><b>Automagical Caching: </b>Just change the tracker URL in your torrent file, and this service manages everything for you.</li>
 			<li><b>Tracker Aggregation: </b>This service uses <tt>info_hash</tt> to distinguish different torrents. All known peers for a torrent are reported, even if they come from different trackers.</li>
 			<li><b>TTL: </b>You could set a custom time-to-live for the cache. This service forces a re-announcement once the cache is expired.</li>
 			<li><b>Arbitrary Client Support: </b>You can leech using any client you like. This service guarantees a fake qBittorrent instance is used for connecting to the actual tracker.</li>
-			<li><b>Privacy: </b>This service does not store your passkeys. If you do not trust it, you could deploy your own instance from <a href="https://github.com/arielherself/btc">the codebase</a>.</li>
+			<li><b>Privacy: </b>You do not show your real IP address to the actual tracker when using this service. Also, this service does not store your information like IP and passkeys. If you do not trust it, you could deploy your own instance from <a href="https://github.com/arielherself/btc">the codebase</a>.</li>
 			<li><b>AI Free: </b>All code except the button on this page is handcrafted, and does not utilize AI in any form. If you are a fan of language models, you could close this tab now.</li>
 		</ul>
 

@@ -1,0 +1,154 @@
+use std::net::{IpAddr, SocketAddr};
+
+use anyhow::Result;
+use percent_encoding::{NON_ALPHANUMERIC, percent_encode};
+use reqwest::{Client, Method};
+use serde_derive::{Deserialize, Serialize};
+use serde_with::skip_serializing_none;
+use url::Url;
+
+use crate::{
+    cache::TorrentCache,
+    utils::{random_client_ua, random_key, random_peer_id, random_port},
+};
+
+#[skip_serializing_none]
+#[derive(Debug, Serialize, Deserialize)]
+pub(crate) struct AnnounceResponse {
+    #[serde(rename = "failure reason")]
+    pub(crate) failure_reason: Option<String>,
+    #[serde(rename = "warning message")]
+    pub(crate) warning_message: Option<String>,
+    pub(crate) interval: Option<u64>,
+    #[serde(rename = "min interval")]
+    pub(crate) min_interval: Option<u64>,
+    #[serde(rename = "tracker id")]
+    pub(crate) tracker_id: Option<String>,
+    #[serde(rename = "complete")]
+    pub(crate) seeders: Option<u64>,
+    #[serde(rename = "incomplete")]
+    pub(crate) leechers: Option<u64>,
+    #[serde(with = "serde_bytes")]
+    pub(crate) peers: Option<Vec<u8>>,
+    #[serde(with = "serde_bytes")]
+    pub(crate) peers6: Option<Vec<u8>>,
+}
+
+impl From<TorrentCache> for AnnounceResponse {
+    fn from(value: TorrentCache) -> Self {
+        let mut peers = Vec::new();
+        let mut peers6 = Vec::new();
+        for peer in value.peers_addr.keys() {
+            if peer.is_ipv4() {
+                peers.extend(serialize_peer_binary(peer));
+            } else if peer.is_ipv6() {
+                peers6.extend(serialize_peer_binary(peer));
+            }
+        }
+
+        Self {
+            failure_reason: None,
+            warning_message: None,
+            interval: Some(30),
+            min_interval: Some(30),
+            tracker_id: None,
+            seeders: Some(0),
+            leechers: Some(value.peers_addr.len() as u64),
+            peers: Some(peers),
+            peers6: Some(peers6),
+        }
+    }
+}
+
+pub(crate) fn deserialize_peers_binary(value: &[u8]) -> Vec<SocketAddr> {
+    debug_assert_eq!(value.len() % 6, 0);
+    value
+        .chunks(6)
+        .map(|x| unsafe {
+            (
+                TryInto::<[u8; 4]>::try_into(&x[..4]).unwrap_unchecked(),
+                u16::from_be_bytes([x[4], x[5]]),
+            )
+                .into()
+        })
+        .collect()
+}
+
+pub(crate) fn serialize_peer_binary(value: &SocketAddr) -> Vec<u8> {
+    match value.ip() {
+        IpAddr::V4(addr) => addr
+            .as_octets()
+            .into_iter()
+            .chain(value.port().to_be_bytes().iter())
+            .copied()
+            .collect(),
+        IpAddr::V6(addr) => addr
+            .as_octets()
+            .into_iter()
+            .chain(value.port().to_be_bytes().iter())
+            .copied()
+            .collect(),
+    }
+}
+
+pub(crate) fn deserialize_peers6_binary(value: &[u8]) -> Vec<SocketAddr> {
+    debug_assert_eq!(value.len() % 18, 0);
+    value
+        .chunks(18)
+        .map(|x| unsafe {
+            (
+                TryInto::<[u8; 16]>::try_into(&x[..16]).unwrap_unchecked(),
+                u16::from_be_bytes([x[16], x[17]]),
+            )
+                .into()
+        })
+        .collect()
+}
+
+pub(crate) async fn announce(
+    tracker_url: &str,
+    info_hash: &[u8],
+    size: u64,
+) -> Result<AnnounceResponse> {
+    let url = Url::parse(tracker_url)?;
+    let info_hash_encoded = percent_encode(info_hash, NON_ALPHANUMERIC).to_string();
+    let url = Url::parse(&if url.query().is_some() {
+        format!("{tracker_url}&info_hash={info_hash_encoded}")
+    } else if url.path() != "/" || tracker_url.ends_with("/") {
+        format!("{tracker_url}?info_hash={info_hash_encoded}")
+    } else {
+        format!("{tracker_url}/?info_hash={info_hash_encoded}")
+    })?;
+
+    let http_client = Client::builder()
+        .user_agent(&random_client_ua(tracker_url))
+        .gzip(true)
+        .build()?;
+
+    let req = http_client
+        .request(Method::GET, url)
+        .query(&[
+            ("peer_id", random_peer_id(tracker_url).as_str()),
+            ("port", random_port(tracker_url).to_string().as_str()),
+            ("uploaded", "0"),
+            ("downloaded", "0"),
+            ("left", &size.to_string()),
+            ("corrupt", "0"),
+            ("key", &random_key(tracker_url)),
+            ("event", "started"),
+            ("numwant", "200"),
+            ("compact", "1"),
+            ("no_peer_id", "1"),
+            ("supportcrypto", "1"),
+            ("redundant", "0"),
+        ])
+        .header(reqwest::header::CONNECTION, "close")
+        .build()?;
+    eprintln!("{:#?}", req);
+
+    let response = http_client.execute(req).await?;
+    eprintln!("{:#?}", response);
+    let response_bytes = response.bytes().await?;
+
+    bt_bencode::from_slice(&response_bytes).map_err(|e| anyhow::anyhow!(e))
+}
