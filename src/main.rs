@@ -1,5 +1,6 @@
-#![feature(bstr, btree_extract_if, ip_as_octets)]
+#![feature(assert_matches, bstr, btree_extract_if, extend_one, ip_as_octets)]
 
+mod bytes_bencode;
 mod cache;
 mod tracker;
 mod utils;
@@ -7,11 +8,13 @@ mod utils;
 use std::{convert::Infallible, time::Duration};
 
 use anyhow::Result;
+use bytes::BufMut;
+use futures::StreamExt as _;
 use percent_encoding::percent_decode_str;
 use serde_derive::{Deserialize, Serialize};
 use warp::{Filter, http::StatusCode};
 
-use crate::{cache::fetch_cache, tracker::AnnounceResponse};
+use crate::{cache::fetch_cache, tracker::AnnounceResponse, utils::replace_trackers_in_torrent};
 
 macro_rules! unwrap_option_or_error {
     ($value: expr) => {{
@@ -94,11 +97,56 @@ async fn main() -> Result<()> {
             )
         });
 
+    let transform = warp::post()
+        .and(warp::path("transform"))
+        .and(warp::multipart::form())
+        .and_then(|mut form: warp::multipart::FormData| async move {
+            while let Some(part) = form.next().await {
+                let part = unwrap_result_or_error!(part);
+                if part.name() != "file" {
+                    continue;
+                }
+                let mut stream = part.stream();
+                let mut buf = Vec::new();
+                while let Some(x) = stream.next().await {
+                    let x = unwrap_result_or_error!(x);
+                    BufMut::put(&mut buf, x);
+                }
+                let mut torrent =
+                    unwrap_result_or_error!(bytes_bencode::BencodeObject::try_from(buf.as_slice()));
+                unwrap_result_or_error!(replace_trackers_in_torrent(&mut torrent));
+
+                let modified_torrent_bytes: Vec<_> = match torrent {
+                    bytes_bencode::BencodeObject::List(obj) => {
+                        unwrap_option_or_error!(obj.into_iter().map(|obj| obj.into()).reduce(
+                            |mut v: Vec<u8>, o| {
+                                v.extend_from_slice(&o);
+                                v
+                            }
+                        ))
+                    }
+                    _ => unreachable!(),
+                };
+
+                return Result::<_, Infallible>::Ok(
+                    warp::http::Response::builder()
+                        .status(StatusCode::OK)
+                        .body(warp::hyper::body::Bytes::copy_from_slice(
+                            &modified_torrent_bytes,
+                        ))
+                        .unwrap(),
+                );
+            }
+
+            unwrap_result_or_error!(Err::<(), &str>("no files are uploaded"));
+            unreachable!();
+        });
+
     let index = warp::get()
         .and(warp::path::end())
         .and(warp::fs::file("www/static/index.html"));
 
-    warp::serve(index.or(announce))
+    warp::serve(index.or(transform).or(announce))
         .run(([0, 0, 0, 0], 3000))
         .await;
 

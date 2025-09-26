@@ -22,83 +22,92 @@
 		<p>Upload your torrent below, then download the modified one. After that, add the new torrent to your BitTorrent client and start leeching.</p>
 
 		<!-- Start of AI-generated code -->
-		<button id="uploadBtn">Upload a file</button>
-		<input id="fileInput" type="file" hidden />
+		<input id="torrentFile" type="file" accept=".torrent" />
+		<button id="uploadBtn">Upload</button>
+
 		<div id="status" aria-live="polite"></div>
 
 		<script>
+		const fileInput = document.getElementById('torrentFile');
 		const uploadBtn = document.getElementById('uploadBtn');
-		const fileInput = document.getElementById('fileInput');
-		const statusEl  = document.getElementById('status');
+		const status = document.getElementById('status');
 
-		uploadBtn.addEventListener('click', () => fileInput.click());
+		function setStatus(text) { status.textContent = text; }
 
-		fileInput.addEventListener('change', async () => {
-			const file = fileInput.files[0];
-			if (!file) return;
+		async function getFilenameFromContentDisposition(header) {
+			if (!header) return null;
+			// try to parse filename="..." or filename*=UTF-8''...
+			const filenameStar = /filename\*\s*=\s*([^;]+)/i.exec(header);
+			if (filenameStar) {
+				// e.g. filename*=UTF-8''modified.torrent or encoded form
+				try {
+					let val = filenameStar[1].trim();
+					// remove surrounding quotes if any
+					val = val.replace(/^"(.*)"$/, '$1');
+					// split off charset'' if present
+					const parts = val.split("''");
+					return decodeURIComponent(parts.pop());
+				} catch(e) { /* fallthrough */ }
+			}
+			const filename = /filename\s*=\s*"([^"]+)"|filename\s*=\s*([^;]+)/i.exec(header);
+			if (filename) return (filename[1] || filename[2] || '').trim().replace(/^"(.*)"$/, '$1');
+			return null;
+		}
 
-			statusEl.textContent = 'Uploading…';
-			const form = new FormData();
-			form.append('file', file, file.name); // change field name if your API expects another
+		uploadBtn.addEventListener('click', async () => {
+			const file = fileInput.files && fileInput.files[0];
+			if (!file) {
+				setStatus('Please choose a .torrent file first.');
+				return;
+			}
+			uploadBtn.disabled = true;
+			setStatus('Uploading...');
 
 			try {
-				const res = await fetch('https://tracker.submy.org/transform', {
+				const form = new FormData();
+				form.append('file', file);
+
+				const resp = await fetch('http://localhost:3000/transform', {
 					method: 'POST',
 					body: form,
+					// credentials/mode can be adjusted depending on server CORS requirements
+					// mode: 'cors'
 				});
 
-				// If the server returned an error status, try to show the message
-				if (!res.ok) {
-					const ct = res.headers.get('content-type') || '';
-					const errText = ct.includes('application/json') ? JSON.stringify(await res.json(), null, 2) : await res.text();
-					throw new Error(errText || `HTTP ${res.status}`);
+				if (!resp.ok) {
+					const text = await resp.text().catch(() => '');
+					throw new Error(`Server returned ${resp.status} ${resp.statusText}${text ? ': ' + text : ''}`);
 				}
 
-				// Get filename from Content-Disposition if present; otherwise derive from original
-				const cd = res.headers.get('content-disposition') || '';
-				const filenameMatch = /filename\*=UTF-8''([^;]+)|filename="([^"]+)"|filename=([^;]+)/i.exec(cd);
-				const serverFilename = filenameMatch
-					? decodeURIComponent(filenameMatch[1] || filenameMatch[2] || filenameMatch[3])
-					: inferOutputName(file.name, res.headers.get('content-type'));
+				const blob = await resp.blob();
 
-				// Read as Blob and trigger a download
-				const blob = await res.blob();
+				// Determine filename from Content-Disposition if provided
+				const cd = resp.headers.get('Content-Disposition');
+				let outName = await getFilenameFromContentDisposition(cd);
+				if (!outName) {
+					// fallback to original name with "-modified"
+					const original = file.name || 'torrent.torrent';
+					outName = original.replace(/(\.torrent)?$/i, '') + '-modified.torrent';
+				}
+
+				// trigger download
 				const url = URL.createObjectURL(blob);
 				const a = document.createElement('a');
 				a.href = url;
-				a.download = serverFilename || 'download';
+				a.download = outName;
 				document.body.appendChild(a);
 				a.click();
 				a.remove();
 				URL.revokeObjectURL(url);
 
-				statusEl.textContent = `Done. Saved: ${a.download}`;
+				setStatus('Done — file downloaded: ' + outName);
 			} catch (err) {
-				statusEl.textContent = 'Upload failed:\n' + (err?.message || String(err));
+				console.error(err);
+				setStatus('Error: ' + (err.message || err));
 			} finally {
-				fileInput.value = ''; // allow re-selecting same file
+				uploadBtn.disabled = false;
 			}
 		});
-
-		// Helper: if no filename from headers, try to make a reasonable one
-		function inferOutputName(inputName, contentType) {
-			const dot = inputName.lastIndexOf('.');
-			const base = dot > -1 ? inputName.slice(0, dot) : inputName;
-			const extFromCT = contentTypeToExt(contentType);
-			return `${base}.transformed${extFromCT ? '.' + extFromCT : ''}`;
-		}
-
-		function contentTypeToExt(ct = '') {
-			// very small map; extend as needed
-			ct = ct.toLowerCase();
-			if (ct.includes('pdf')) return 'pdf';
-			if (ct.includes('zip')) return 'zip';
-			if (ct.includes('json')) return 'json';
-			if (ct.includes('xml')) return 'xml';
-			if (ct.includes('csv')) return 'csv';
-			if (ct.includes('plain')) return 'txt';
-			return ''; // unknown
-		}
 		</script>
 		<!-- End of AI-generated code -->
 

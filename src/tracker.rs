@@ -9,7 +9,7 @@ use url::Url;
 
 use crate::{
     cache::TorrentCache,
-    utils::{random_client_ua, random_key, random_peer_id, random_port},
+    utils::{as_array_ref, random_client_ua, random_key, random_peer_id, random_port},
 };
 
 #[skip_serializing_none]
@@ -66,7 +66,7 @@ pub(crate) fn deserialize_peers_binary(value: &[u8]) -> Vec<SocketAddr> {
         .chunks(6)
         .map(|x| unsafe {
             (
-                TryInto::<[u8; 4]>::try_into(&x[..4]).unwrap_unchecked(),
+                as_array_ref::<4>(&x[..4]).to_owned(),
                 u16::from_be_bytes([x[4], x[5]]),
             )
                 .into()
@@ -97,7 +97,7 @@ pub(crate) fn deserialize_peers6_binary(value: &[u8]) -> Vec<SocketAddr> {
         .chunks(18)
         .map(|x| unsafe {
             (
-                TryInto::<[u8; 16]>::try_into(&x[..16]).unwrap_unchecked(),
+                as_array_ref::<16>(&x[..16]).to_owned(),
                 u16::from_be_bytes([x[16], x[17]]),
             )
                 .into()
