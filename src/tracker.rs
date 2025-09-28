@@ -2,7 +2,7 @@ use std::net::{IpAddr, SocketAddr};
 
 use anyhow::Result;
 use percent_encoding::{NON_ALPHANUMERIC, percent_encode};
-use reqwest::{Client, Method};
+use reqwest::{Client, Method, Proxy};
 use serde_derive::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
 use url::Url;
@@ -122,8 +122,14 @@ pub(crate) async fn announce(
 
     let http_client = Client::builder()
         .user_agent(&random_client_ua(tracker_url))
-        .gzip(true)
-        .build()?;
+        .gzip(true);
+
+    let http_client = if let Ok(proxy_url) = std::env::var("PROXY") {
+        http_client.proxy(Proxy::all(&proxy_url)?)
+    } else {
+        http_client
+    }
+    .build()?;
 
     let req = http_client
         .request(Method::GET, url)

@@ -74,9 +74,11 @@ pub(crate) unsafe fn as_array_ref<'a, const N: usize>(slice: &'a [u8]) -> &'a [u
 
 #[inline]
 fn process_tracker_url(value: &str) -> Result<String> {
-    const TRACKER_BASE_URL: &str = "https://tracker.submy.org";
+    let tracker_base_url =
+        std::env::var("BASE_URL").unwrap_or("https://tracker.submy.org".to_string());
 
-    let mut url = Url::parse(TRACKER_BASE_URL)?;
+    let mut url = Url::parse(&tracker_base_url)?;
+    url.join("announce")?;
     url.query_pairs_mut()
         .append_pair("tracker_url", value)
         .append_pair("ttl", "28800");
