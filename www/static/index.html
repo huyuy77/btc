@@ -67,7 +67,7 @@
 				const form = new FormData();
 				form.append('file', file);
 
-				const resp = await fetch('http://localhost:3000/transform', {
+				const resp = await fetch('https://tracker.submy.org/transform', {
 					method: 'POST',
 					body: form,
 					// credentials/mode can be adjusted depending on server CORS requirements
