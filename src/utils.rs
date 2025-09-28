@@ -77,8 +77,7 @@ fn process_tracker_url(value: &str) -> Result<String> {
     let tracker_base_url =
         std::env::var("BASE_URL").unwrap_or("https://tracker.submy.org".to_string());
 
-    let mut url = Url::parse(&tracker_base_url)?;
-    url.join("announce")?;
+    let mut url = Url::parse(&tracker_base_url)?.join("announce")?;
     url.query_pairs_mut()
         .append_pair("tracker_url", value)
         .append_pair("ttl", "28800");
