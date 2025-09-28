@@ -1,4 +1,14 @@
 //! Bencode parser without dependency on string encodings.
+//!
+//! A lot of libraries for bencode format are only suitable for the case where every byte-string
+//! entry only consists of valid UTF-8 codepoints, because they only parses [`String`]. However,
+//! they fail to parse real-world torrent files as they often contains raw bytes. This simple
+//! parser correctly handles general cases.
+//!
+//! This module is only meant to be used within this project instead of for general use, because it
+//! does not provide a formal interface, and does not implement standard-conforming error
+//! handling. For example, the `into`-`try_from` roundtrip results in a different bencode object
+//! since `TryFrom<&[u8]>` adds an outer [`BencodeObject::List`] to the object.
 
 use anyhow::Result;
 
@@ -21,12 +31,14 @@ pub(crate) enum BencodeObject {
     /// If size is zero, then vec is None.
     Bytes(usize, Option<Vec<u8>>),
     List(Vec<BencodeObject>),
+    /// Stores key-value pairs.
     Dictionary(Vec<(BencodeObject, BencodeObject)>),
 }
 
 impl TryFrom<&[u8]> for BencodeObject {
     type Error = anyhow::Error;
 
+    /// Deserializes bencode objects. The root is a [`BencodeObject::List`].
     fn try_from(value: &[u8]) -> Result<Self> {
         let mut parser = BencodeParser::new();
         for &x in value {
@@ -37,6 +49,7 @@ impl TryFrom<&[u8]> for BencodeObject {
 }
 
 impl Into<Vec<u8>> for BencodeObject {
+    /// Serializes bencode objects.
     fn into(self) -> Vec<u8> {
         let mut result = Vec::new();
         match self {

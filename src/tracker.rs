@@ -1,3 +1,5 @@
+//! Tracker-related data structures and helper functions.
+
 use std::net::{IpAddr, SocketAddr};
 
 use anyhow::Result;
@@ -30,6 +32,7 @@ pub(crate) struct AnnounceResponse {
     pub(crate) leechers: Option<u64>,
     #[serde(with = "serde_bytes")]
     pub(crate) peers: Option<Vec<u8>>,
+    /// Peers with IPv6 addresses.
     #[serde(with = "serde_bytes")]
     pub(crate) peers6: Option<Vec<u8>>,
 }
@@ -105,6 +108,9 @@ pub(crate) fn deserialize_peers6_binary(value: &[u8]) -> Vec<SocketAddr> {
         .collect()
 }
 
+/// Announce to the origin tracker. A fixed fake qBittorrent client fingerprint generated from the
+/// tracker URL is used as a disguise. To construct a realistic request, the torrent size must be
+/// known at this moment.
 pub(crate) async fn announce(
     tracker_url: &str,
     info_hash: &[u8],
@@ -112,6 +118,9 @@ pub(crate) async fn announce(
 ) -> Result<AnnounceResponse> {
     let url = Url::parse(tracker_url)?;
     let info_hash_encoded = percent_encode(info_hash, NON_ALPHANUMERIC).to_string();
+    // We have to manually concatenate the URL here, because `reqwest` and `url` crate always
+    // percent-encode the url components from `String`. Since `info_hash`'es are raw bytes instead
+    // of UTF-8 encoded printable strings, the built-in conversion from `reqwest` is LOSSY.
     let url = Url::parse(&if url.query().is_some() {
         format!("{tracker_url}&info_hash={info_hash_encoded}")
     } else if url.path() != "/" || tracker_url.ends_with("/") {

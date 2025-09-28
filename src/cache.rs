@@ -1,3 +1,5 @@
+//! Peer list cache backed by cache directory.
+
 use std::{
     collections::{BTreeSet, HashMap},
     mem::take,
@@ -20,8 +22,13 @@ use url::Url;
 
 use crate::tracker;
 
+/// In-memory solution to concurrent race. The key of the hash map is percent-encoded `info_hash`,
+/// and the value consists of a lock and a reference count. When the rc is zeroed, the entry is
+/// removed from the map to save memory. Uses read-write locks for better performance.
 static CACHE_LOCKS: LazyLock<Mutex<HashMap<String, (Arc<RwLock<()>>, usize)>>> =
     LazyLock::new(Default::default);
+/// Since the public instance uses a rotated IP pool which poses a limit on concurrently opened
+/// connections, we use a semaphore to control connections to origin trackers.
 static TRACKER_CONNECTIONS: LazyLock<Semaphore> = LazyLock::new(|| Semaphore::new(10));
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Clone, Copy)]
@@ -30,6 +37,8 @@ pub(crate) struct Peer {
     pub(crate) addr: SocketAddr,
 }
 
+/// This struct has two copies of peer list: [`TorrentCache::peers_time`] is for removing overdue
+/// peers, and [`TorrentCache::peers_addr`] is for detecting duplicates in the cache.
 #[derive(Serialize, Deserialize, Default, Clone)]
 pub(crate) struct TorrentCache {
     pub(crate) size: u64,
@@ -39,9 +48,13 @@ pub(crate) struct TorrentCache {
 }
 
 fn get_cache_root_dir() -> PathBuf {
-    let cache_root_dir = std::env::var("XDG_CACHE_HOME")
+    let cache_root_dir = std::env::var("CACHE_ROOT")
         .map(|x| Path::new(&x).to_owned())
-        .unwrap_or(Path::new(&std::env::var("HOME").unwrap()).join(".cache"));
+        .unwrap_or(
+            std::env::var("XDG_CACHE_HOME")
+                .map(|x| Path::new(&x).to_owned())
+                .unwrap_or(Path::new(&std::env::var("HOME").unwrap()).join(".cache")),
+        );
     cache_root_dir.join("btc")
 }
 
@@ -81,6 +94,9 @@ async fn write_cache(info_hash: &str, value: &TorrentCache) -> Result<()> {
     Ok(())
 }
 
+/// A wrapper for the cache lock guard, with manually implemented async-drop method to manipulate
+/// the outer lock and the rc. You should always use [`CacheLockReadGuard::drop`] instead of
+/// [`Drop::drop`].
 struct CacheLockReadGuard {
     name: String,
     _inner: OwnedRwLockReadGuard<()>,
@@ -120,6 +136,9 @@ impl CacheLockReadGuard {
     }
 }
 
+/// A wrapper for the cache lock guard, with manually implemented async-drop method to manipulate
+/// the outer lock and the rc. You should always use [`CacheLockWriteGuard::drop`] instead of
+/// [`Drop::drop`].
 struct CacheLockWriteGuard {
     name: String,
     _inner: OwnedRwLockWriteGuard<()>,
@@ -159,6 +178,7 @@ impl CacheLockWriteGuard {
     }
 }
 
+/// Clear overdue peers and fetch peer list from origin if needed.
 pub(crate) async fn fetch_cache(
     tracker_url: String,
     info_hash: &[u8],
@@ -174,6 +194,7 @@ pub(crate) async fn fetch_cache(
     .to_string();
     let info_hash_encoded = percent_encode(info_hash, NON_ALPHANUMERIC).to_string();
 
+    // If the cache is valid, simply return it.
     let read_lock = CacheLockReadGuard::new(&info_hash_encoded).await;
     let curr_cache = read_cache(&info_hash_encoded).await?;
     read_lock.drop().await;
@@ -185,6 +206,8 @@ pub(crate) async fn fetch_cache(
         }
     };
 
+    // If the cache is invalid but flushed by another task, then also return it.
+    // Here since we grab the write lock, there is no need to invoke further validation.
     let write_lock = CacheLockWriteGuard::new(&info_hash_encoded).await;
     let curr_cache = read_cache(&info_hash_encoded).await?;
     if let Some(ref curr_cache) = curr_cache {
@@ -210,6 +233,8 @@ pub(crate) async fn fetch_cache(
 
     let mut curr_cache = curr_cache.unwrap_or_default();
     curr_cache.size = torrent_size;
+    // Respect the minimum announce interval from origin by keeping the cache valid for at least
+    // that long.
     let ttl = if let Some(min_interval) = tracker_response.min_interval {
         Duration::from_secs(min_interval).max(ttl)
     } else {

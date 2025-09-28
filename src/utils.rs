@@ -23,6 +23,7 @@ const QB_VERSION_UAS: [&str; 8] = [
 const PEER_ID_CHARS: &str = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 const KEY_CHARS: &str = "0123456789ABCDEF";
 
+/// Deterministic random number generator depending on `info_hash`.
 fn get_rng(value: &str) -> StdRng {
     unsafe {
         StdRng::seed_from_u64(u64::from_be_bytes(
