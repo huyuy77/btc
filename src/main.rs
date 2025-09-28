@@ -147,7 +147,7 @@ async fn main() -> Result<()> {
         .and(warp::fs::file("www/static/index.html"));
 
     warp::serve(index.or(transform).or(announce))
-        .run(([0, 0, 0, 0], 3000))
+        .run(([127, 0, 0, 1], 3000))
         .await;
 
     Ok(())
