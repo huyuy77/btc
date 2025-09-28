@@ -13,7 +13,8 @@ use serde_derive::{Deserialize, Serialize};
 use tokio::{
     fs::create_dir_all,
     io::{AsyncReadExt as _, AsyncWriteExt as _},
-    sync::{Mutex, OwnedRwLockReadGuard, OwnedRwLockWriteGuard, RwLock},
+    sync::{Mutex, OwnedRwLockReadGuard, OwnedRwLockWriteGuard, RwLock, Semaphore},
+    time::timeout,
 };
 use url::Url;
 
@@ -21,6 +22,7 @@ use crate::tracker;
 
 static CACHE_LOCKS: LazyLock<Mutex<HashMap<String, (Arc<RwLock<()>>, usize)>>> =
     LazyLock::new(Default::default);
+static TRACKER_CONNECTIONS: LazyLock<Semaphore> = LazyLock::new(|| Semaphore::new(10));
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Clone, Copy)]
 pub(crate) struct Peer {
@@ -198,7 +200,13 @@ pub(crate) async fn fetch_cache(
 
     debug_assert!(torrent_size.is_some());
     let torrent_size = torrent_size.unwrap();
-    let tracker_response = tracker::announce(&tracker_url, &info_hash, torrent_size).await?;
+    let permit = timeout(Duration::from_secs(30), TRACKER_CONNECTIONS.acquire()).await??;
+    let tracker_response = timeout(
+        Duration::from_secs(20),
+        tracker::announce(&tracker_url, &info_hash, torrent_size),
+    )
+    .await??;
+    drop(permit);
 
     let mut curr_cache = curr_cache.unwrap_or_default();
     curr_cache.size = torrent_size;
