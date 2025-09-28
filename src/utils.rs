@@ -111,16 +111,22 @@ pub(crate) fn replace_trackers_in_torrent(torrent: &mut BencodeObject) -> Result
                         && let BencodeObject::List(obj) = v
                     {
                         for obj in obj {
-                            if let BencodeObject::List(obj) = obj
-                                && let BencodeObject::Bytes(len, obj) = obj.first_mut().unwrap()
-                                && *len != 0
-                            {
-                                let obj = obj.as_mut().unwrap();
-                                let new_url =
-                                    process_tracker_url(&String::from_utf8(std::mem::take(obj))?)?
+                            if let BencodeObject::List(obj) = obj {
+                                for obj in obj {
+                                    if let BencodeObject::Bytes(len, obj) = obj
+                                        && *len != 0
+                                    {
+                                        let obj = obj.as_mut().unwrap();
+                                        let new_url = process_tracker_url(&String::from_utf8(
+                                            std::mem::take(obj),
+                                        )?)?
                                         .into_bytes();
-                                *len = new_url.len();
-                                result.push(std::mem::replace(obj, new_url).into_boxed_slice());
+                                        *len = new_url.len();
+                                        result.push(
+                                            std::mem::replace(obj, new_url).into_boxed_slice(),
+                                        );
+                                    }
+                                }
                             }
                         }
                     }
