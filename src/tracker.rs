@@ -3,6 +3,7 @@
 use std::net::{IpAddr, SocketAddr};
 
 use anyhow::Result;
+use bt_bencode::ByteString;
 use percent_encoding::{NON_ALPHANUMERIC, percent_encode};
 use reqwest::{Client, Method, Proxy};
 use serde_derive::{Deserialize, Serialize};
@@ -30,11 +31,9 @@ pub(crate) struct AnnounceResponse {
     pub(crate) seeders: Option<u64>,
     #[serde(rename = "incomplete")]
     pub(crate) leechers: Option<u64>,
-    #[serde(with = "serde_bytes")]
-    pub(crate) peers: Option<Vec<u8>>,
+    pub(crate) peers: Option<ByteString>,
     /// Peers with IPv6 addresses.
-    #[serde(with = "serde_bytes")]
-    pub(crate) peers6: Option<Vec<u8>>,
+    pub(crate) peers6: Option<ByteString>,
 }
 
 impl From<TorrentCache> for AnnounceResponse {
@@ -57,8 +56,8 @@ impl From<TorrentCache> for AnnounceResponse {
             tracker_id: None,
             seeders: Some(0),
             leechers: Some(value.peers_addr.len() as u64),
-            peers: Some(peers),
-            peers6: Some(peers6),
+            peers: Some(peers.into()),
+            peers6: Some(peers6.into()),
         }
     }
 }
