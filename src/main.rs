@@ -1,4 +1,4 @@
-#![feature(assert_matches, bstr, btree_extract_if, extend_one, ip_as_octets)]
+#![feature(assert_matches, bstr, extend_one, ip_as_octets)]
 
 mod bytes_bencode;
 mod cache;
