@@ -1,6 +1,6 @@
-# Project BTC
+# PT Cracker
 
-BitTorrent Tracker Cache ("BTC") is a generic peer list cache service. It allows users to communicate with other peers without reporting real statistics to trackers.
+PT Cracker is a generic peer list cache service. It allows users to communicate with other peers without reporting real statistics to trackers.
 
 If you use public trackers or lack familiarity with the mechanism of private trackers, this may sound weird. But the only way PT knows about your upload/download is through the data reported by your client when requesting for a peer list ("announce"). Therefore, if we manually construct and send a request to the tracker mocking the start of a session, and store the peer list received, then we could just use this list to connect to peers directly.
 

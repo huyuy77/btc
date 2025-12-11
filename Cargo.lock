@@ -107,27 +107,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "btc"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bt_bencode",
- "bytes",
- "futures",
- "percent-encoding",
- "rand",
- "reqwest",
- "serde",
- "serde_derive",
- "serde_json",
- "serde_with",
- "sha2",
- "tokio",
- "url",
- "warp",
-]
-
-[[package]]
 name = "bumpalo"
 version = "3.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1161,6 +1140,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "89ae43fd86e4158d6db51ad8e2b80f313af9cc74f5c0e03ccb87de09998732de"
 dependencies = [
  "unicode-ident",
+]
+
+[[package]]
+name = "pt_cracker"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bt_bencode",
+ "bytes",
+ "futures",
+ "percent-encoding",
+ "rand",
+ "reqwest",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "serde_with",
+ "sha2",
+ "tokio",
+ "url",
+ "warp",
 ]
 
 [[package]]

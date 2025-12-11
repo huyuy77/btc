@@ -55,7 +55,7 @@ fn get_cache_root_dir() -> PathBuf {
                 .map(|x| Path::new(&x).to_owned())
                 .unwrap_or(Path::new(&std::env::var("HOME").unwrap()).join(".cache")),
         );
-    cache_root_dir.join("btc")
+    cache_root_dir.join("pt_cracker")
 }
 
 async fn read_cache(info_hash: &str) -> Result<Option<TorrentCache>> {
