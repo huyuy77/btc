@@ -3,6 +3,9 @@ name: Release Build
 on:
   release:
     types: [created]
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
